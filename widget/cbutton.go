@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
-	col "fyne.io/fyne/v2/internal/color"
 	"fyne.io/fyne/v2/internal/widget"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -31,6 +30,9 @@ type CButton struct { //Custom Buttton but that's a lot to types
 	hovered, focused bool
 	tapAnim          *fyne.Animation
 	background       *canvas.Rectangle
+	color            color.Color
+	focusColor       color.Color
+	disabledColor    color.Color
 }
 
 // NewButton creates a new button widget with the set label and tap handler
@@ -42,6 +44,12 @@ func NewCButton(label string, tapped func()) *CButton {
 
 	button.ExtendBaseWidget(button)
 	return button
+}
+
+func (b *CButton) SetColors(buttonColor color.Color, focusColor color.Color, disabledColor color.Color) {
+	b.color = buttonColor
+	b.disabledColor = disabledColor
+	b.focusColor = focusColor
 }
 
 // NewButtonWithIcon creates a new button widget with the specified label, themed icon and tap handler
@@ -65,9 +73,11 @@ func (b *CButton) CreateRenderer() fyne.WidgetRenderer {
 	text.inset = fyne.NewSquareSize(theme.InnerPadding())
 
 	b.background = canvas.NewRectangle(theme.ButtonColor())
+	b.background.StrokeColor = color.Black
+	b.background.StrokeWidth = 2
 	b.background.CornerRadius = theme.InputRadiusSize()
 	tapBG := canvas.NewRectangle(color.Transparent)
-	b.tapAnim = newButtonTapAnimation(tapBG, b)
+	b.tapAnim = newCButtonTapAnimation(tapBG, b, b.focusColor)
 	b.tapAnim.Curve = fyne.AnimationEaseOut
 	objects := []fyne.CanvasObject{
 		b.background,
@@ -114,6 +124,12 @@ func (b *CButton) MinSize() fyne.Size {
 func (b *CButton) MouseIn(*desktop.MouseEvent) {
 	b.hovered = true
 
+	oldSize := b.background.Size()
+	oldSize.Width += 2
+	oldSize.Height += 2
+	b.background.Resize(oldSize)
+	b.background.StrokeWidth = 0
+
 	b.applyButtonTheme()
 }
 
@@ -124,6 +140,11 @@ func (b *CButton) MouseMoved(*desktop.MouseEvent) {
 // MouseOut is called when a desktop pointer exits the widget
 func (b *CButton) MouseOut() {
 	b.hovered = false
+	oldSize := b.background.Size()
+	oldSize.Width -= 2
+	oldSize.Height -= 2
+	b.background.Resize(oldSize)
+	b.background.StrokeWidth = 2
 
 	b.applyButtonTheme()
 }
@@ -180,48 +201,13 @@ func (b *CButton) applyButtonTheme() {
 func (b *CButton) buttonColor() color.Color {
 	switch {
 	case b.Disabled():
-		if b.Importance == LowImportance {
-			return color.Transparent
-		}
-		return theme.DisabledButtonColor()
+		return b.disabledColor
 	case b.focused:
-		bg := theme.ButtonColor()
-		if b.Importance == HighImportance {
-			bg = theme.PrimaryColor()
-		} else if b.Importance == DangerImportance {
-			bg = theme.ErrorColor()
-		} else if b.Importance == WarningImportance {
-			bg = theme.WarningColor()
-		} else if b.Importance == SuccessImportance {
-			bg = theme.SuccessColor()
-		}
-
-		return blendColor(bg, theme.FocusColor())
+		return b.focusColor
 	case b.hovered:
-		bg := theme.ButtonColor()
-		if b.Importance == HighImportance {
-			bg = theme.PrimaryColor()
-		} else if b.Importance == DangerImportance {
-			bg = theme.ErrorColor()
-		} else if b.Importance == WarningImportance {
-			bg = theme.WarningColor()
-		} else if b.Importance == SuccessImportance {
-			bg = theme.SuccessColor()
-		}
-
-		return blendColor(bg, theme.HoverColor())
-	case b.Importance == HighImportance:
-		return theme.PrimaryColor()
-	case b.Importance == LowImportance:
-		return color.Transparent
-	case b.Importance == DangerImportance:
-		return theme.ErrorColor()
-	case b.Importance == WarningImportance:
-		return theme.WarningColor()
-	case b.Importance == SuccessImportance:
-		return theme.SuccessColor()
+		return blendColor(b.color, b.focusColor)
 	default:
-		return theme.ButtonColor()
+		return b.color
 	}
 }
 
@@ -381,14 +367,14 @@ func (r *cbuttonRenderer) updateIconAndText() {
 	r.label.Refresh()
 }
 
-func newCButtonTapAnimation(bg *canvas.Rectangle, w fyne.Widget) *fyne.Animation {
+func newCButtonTapAnimation(bg *canvas.Rectangle, w fyne.Widget, focusColor color.Color) *fyne.Animation {
 	return fyne.NewAnimation(canvas.DurationStandard, func(done float32) {
 		mid := w.Size().Width / 2
 		size := mid * done
 		bg.Resize(fyne.NewSize(size*2, w.Size().Height))
 		bg.Move(fyne.NewPos(mid-size, 0))
 
-		r, g, bb, a := col.ToNRGBA(theme.PressedColor())
+		r, g, bb, a := focusColor.RGBA()
 		aa := uint8(a)
 		fade := aa - uint8(float32(aa)*done)
 		if fade > 0 {
